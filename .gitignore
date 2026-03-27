@@ -18,3 +18,6 @@ sample_screenshots/
 *.tfstate
 *.tfstate.backup
 *.tfvars         
+
+# Dagster
+.tmp_dagster_home_*/

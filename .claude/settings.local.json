@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(PGPASSWORD=postgres psql -U postgres -h localhost -d screenshots_db -c \"\nCREATE TABLE enriched_screenshots \\(\n    id SERIAL PRIMARY KEY,\n    source TEXT NOT NULL,\n    confidence FLOAT,\n    screen_type TEXT,\n    application TEXT,\n    key_content TEXT,\n    entities TEXT,\n    created_at TIMESTAMP DEFAULT NOW\\(\\)\n\\);\")"
+      "Bash(PGPASSWORD=postgres psql -U postgres -h localhost -d screenshots_db -c \"\nCREATE TABLE enriched_screenshots \\(\n    id SERIAL PRIMARY KEY,\n    source TEXT NOT NULL,\n    confidence FLOAT,\n    screen_type TEXT,\n    application TEXT,\n    key_content TEXT,\n    entities TEXT,\n    created_at TIMESTAMP DEFAULT NOW\\(\\)\n\\);\")",
+      "Bash(PGPASSWORD=postgres psql -h screenshots-db.cpssyyes48lh.ap-southeast-2.rds.amazonaws.com -U postgres -d screenshots_db -c \"SELECT id, source, screen_type, application FROM enriched_screenshots LIMIT 5;\" 2>&1)",
+      "Bash(PGPASSWORD=postgres psql -h screenshots-db.cpssyyes48lh.ap-southeast-2.rds.amazonaws.com -U postgres -d screenshots_db -c \"SELECT key_content, entities FROM enriched_screenshots LIMIT 2;\" 2>&1)",
+      "Bash(source /Users/zohairoomatia/Desktop/projects/screenshot-tracker/venv/bin/activate)",
+      "Bash(python3 -c \":*)"
     ]
   }
 }
