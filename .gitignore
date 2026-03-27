@@ -1,0 +1,14 @@
+# Environment                                                                                 
+.env            
+venv/
+
+# Python
+__pycache__/
+*.egg-info/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Sample data
+sample_screenshots/
