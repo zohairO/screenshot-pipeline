@@ -1,47 +1,43 @@
-# screenshot_pipeline
+# Screenshot Tracker                                                                     
+                                                                                           
+I take a lot of screenshots of things I send to ChatGPT — error messages, code snippets, 
+documentation, UI bugs. I realised this is basically a log of everything I struggle with.
+So I built a pipeline to analyse those screenshots and surface patterns in what I ask   
+for help with the most, so I can focus on improving in those areas.
 
-This is a [Dagster](https://dagster.io/) project scaffolded with [`dagster project scaffold`](https://docs.dagster.io/guides/build/projects/creating-a-new-project).
+## How it works
 
-## Getting started
+1. **Screenshots land in S3** — raw screenshots are uploaded to an S3 bucket             
+2. **OCR extracts text** — Tesseract runs on each image to pull out readable content
+3. **Confidence routing** — OCR results are scored and routed: high-confidence text goes 
+straight to enrichment, low-confidence results are flagged                               
+4. **LLM enrichment** — Claude analyses the extracted text and classifies each screenshot
+(screen type, application, key content, entities)                                       
+5. **Storage** — enriched results are stored in a PostgreSQL database on AWS RDS
+                                                                                        
+## Tech stack   
+                                                                                        
+- **Dagster** — orchestration                                                            
+- **Tesseract** — OCR
+- **Claude API** — LLM enrichment                                                        
+- **AWS S3** — screenshot storage
+- **AWS RDS (PostgreSQL)** — structured data storage                                     
+- **Terraform** — infrastructure as code
+                                                                                        
+## Setup        
 
-First, install your Dagster code location as a Python package. By using the --editable flag, pip will install your Python package in ["editable mode"](https://pip.pypa.io/en/latest/topics/local-project-installs/#editable-installs) so that as you develop, local code changes will automatically apply.
-
-```bash
-pip install -e ".[dev]"
-```
-
-Then, start the Dagster UI web server:
-
-```bash
-dagster dev
-```
-
-Open http://localhost:3000 with your browser to see the project.
-
-You can start writing assets in `screenshot_pipeline/assets.py`. The assets are automatically loaded into the Dagster code location as you define them.
-
-## Development
-
-### Adding new Python dependencies
-
-You can specify new Python dependencies in `setup.py`.
-
-### Unit testing
-
-Tests are in the `pipeline_tests` directory and you can run tests using `pytest`:
-
-```bash
-pytest pipeline_tests
-```
-
-### Schedules and sensors
-
-If you want to enable Dagster [Schedules](https://docs.dagster.io/guides/automate/schedules/) or [Sensors](https://docs.dagster.io/guides/automate/sensors/) for your jobs, the [Dagster Daemon](https://docs.dagster.io/guides/deploy/execution/dagster-daemon) process must be running. This is done automatically when you run `dagster dev`.
-
-Once your Dagster Daemon is running, you can start turning on schedules and sensors for your jobs.
-
-## Deploy on Dagster+
-
-The easiest way to deploy your Dagster project is to use Dagster+.
-
-Check out the [Dagster+ documentation](https://docs.dagster.io/dagster-plus/) to learn more.
+1. Clone the repo                                                                        
+2. Create a virtual environment and install dependencies:
+    ```bash                                                                               
+    python -m venv venv
+    source venv/bin/activate
+    pip install -e ".[dev]"                                                               
+3. Create a .env file with your credentials (see .env.example)
+4. Run the Dagster UI:                                                                   
+dagster dev     
+                                                                                        
+What's next
+                                                                                        
+- dbt transformation layer to aggregate patterns over time                               
+- Dashboard to visualise weak areas and track improvement
+- Neo4j graph to map relationships between topics        
