@@ -1,4 +1,6 @@
-from dagster import asset
+from multiprocessing import context
+
+from dagster import asset, AssetExecutionContext
 import pytesseract
 from PIL import Image
 import anthropic 
@@ -54,7 +56,7 @@ def ocr_results(raw_screenshots: list[str]) -> list[dict]:
     return results
 
 @asset
-def confidence_routing(ocr_results: list[dict]) -> dict:
+def confidence_routing(context: AssetExecutionContext, ocr_results: list[dict]) -> dict:      
     """Route OCR results based on confidence scores."""
     high_confidence = []
     low_confidence = []
@@ -68,6 +70,8 @@ def confidence_routing(ocr_results: list[dict]) -> dict:
         else:
             failed.append(result)
 
+    context.log.info(f"High: {len(high_confidence)}, Low: {len(low_confidence)}, Failed: {len(failed)}")  
+  
     return {
         "high": high_confidence,
         "low": low_confidence,
@@ -100,7 +104,12 @@ def llm_enrichment(confidence_routing: dict) -> list[dict]:
         )
 
         try:
-            analysis = json.loads(message.content[0].text)
+            response_text = message.content[0].text
+            response_text = response_text.strip()
+            if response_text.startswith("```"):
+                response_text = response_text.split("\n", 1)[1]
+                response_text = response_text.rsplit("```", 1)[0]
+            analysis = json.loads(response_text)
         except json.JSONDecodeError:
             analysis = {"raw_response": message.content[0].text}
 
@@ -113,8 +122,10 @@ def llm_enrichment(confidence_routing: dict) -> list[dict]:
     return enriched
 
 @asset
-def store_enriched_results(llm_enrichment: list[dict]) -> None:
-    """Store enriched OCR results in PostgreSQL."""                                                         
+def store_enriched_results(context: AssetExecutionContext, llm_enrichment: list[dict]) -> None:
+    """Store enriched OCR results in PostgreSQL."""       
+
+    context.log.info(f"Received {len(llm_enrichment)} enriched results")                                                     
     conn = psycopg2.connect(
         host=os.environ["DB_HOST"],                                                                               
         database=os.environ["DB_NAME"],
@@ -125,19 +136,22 @@ def store_enriched_results(llm_enrichment: list[dict]) -> None:
                                                                                                             
     for item in llm_enrichment:
         analysis = item["analysis"]
-        cursor.execute(                                                                                     
-            """INSERT INTO enriched_screenshots 
-                (source, confidence, screen_type, application, key_content, entities)                        
-                VALUES (%s, %s, %s, %s, %s, %s)""",
-            (                                                                                               
-                item["source"],
-                item["confidence"],                                                                         
-                analysis.get("screen_type"),
-                analysis.get("application"),
-                analysis.get("key_content"),                                                                
-                analysis.get("entities", []),
-            )                                                                                               
-        )       
+        try:
+            cursor.execute(
+                """INSERT INTO enriched_screenshots
+                    (source, confidence, screen_type, application, key_content, entities) VALUES (%s, %s, %s, %s, %s, %s)""",
+                (
+                    item["source"],
+                    item["confidence"],
+                    analysis.get("screen_type"),
+                    analysis.get("application"),
+                    analysis.get("key_content"),
+                    json.dumps(analysis.get("entities", [])),
+                )
+            )
+        except Exception as e:
+            context.log.error(f"Insert failed: {e}")
+            conn.rollback()    
 
     conn.commit()
     cursor.close()

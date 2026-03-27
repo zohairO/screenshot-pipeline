@@ -19,6 +19,6 @@ dev = [
 requires = ["hatchling>=1.19.0"]
 build-backend = "hatchling.build"
 
-[tool.dagster]
-module_name = "fluency_pipeline.definitions"
-code_location_name = "fluency_pipeline"
+[tool.dagster]                                                       
+module_name = "pipeline.definitions"                                 
+code_location_name = "pipeline"   
