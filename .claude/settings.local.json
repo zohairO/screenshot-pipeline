@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(PGPASSWORD=postgres psql -U postgres -h localhost -d screenshots_db -c \"\nCREATE TABLE enriched_screenshots \\(\n    id SERIAL PRIMARY KEY,\n    source TEXT NOT NULL,\n    confidence FLOAT,\n    screen_type TEXT,\n    application TEXT,\n    key_content TEXT,\n    entities TEXT,\n    created_at TIMESTAMP DEFAULT NOW\\(\\)\n\\);\")"
+    ]
+  }
+}

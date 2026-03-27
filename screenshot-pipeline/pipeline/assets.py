@@ -1,0 +1,144 @@
+from dagster import asset
+import pytesseract
+from PIL import Image
+import anthropic 
+import json
+import boto3
+import tempfile
+import os
+from dotenv import load_dotenv
+import psycopg2
+
+load_dotenv()
+
+@asset
+def raw_screenshots() -> list[str]:
+    """Pull screenshots from S3 and download to temp directory."""
+    s3 = boto3.client("s3")
+    bucket = os.environ["S3_BUCKET_NAME"]
+
+    response = s3.list_objects_v2(Bucket=bucket)
+
+    temp_dir = tempfile.mkdtemp()
+    paths = []
+
+    for obj in response.get("Contents", []):
+        key = obj["Key"]
+        if key.lower().endswith((".png", ".jpg", ".jpeg")):
+            local_path = os.path.join(temp_dir, key.replace("/", "_"))
+            s3.download_file(bucket, key, local_path)
+            paths.append(local_path)
+
+    return paths
+
+
+@asset 
+def ocr_results(raw_screenshots: list[str]) -> list[dict]:
+    """Run OCR on each screenshot and return text with confidence scores."""
+    results = []
+
+    for path in raw_screenshots:
+        image = Image.open(path)
+        text = pytesseract.image_to_string(image)
+        data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+
+        confidence = [int(c) for c in data["conf"] if int(c) > 0]
+        avg_confidence = sum(confidence) / len(confidence) if confidence else 0
+
+        results.append({
+            "source": path,
+            "text": text,
+            "confidence": avg_confidence
+        })
+
+    return results
+
+@asset
+def confidence_routing(ocr_results: list[dict]) -> dict:
+    """Route OCR results based on confidence scores."""
+    high_confidence = []
+    low_confidence = []
+    failed = []
+
+    for result in ocr_results:
+        if result["confidence"] >= 80:
+            high_confidence.append(result)
+        elif result["confidence"] >= 40:
+            low_confidence.append(result)
+        else:
+            failed.append(result)
+
+    return {
+        "high": high_confidence,
+        "low": low_confidence,
+        "failed": failed,
+    }
+
+
+@asset
+def llm_enrichment(confidence_routing: dict) -> list[dict]:
+    """Send high-confidence OCR text to Claude for structured extraction."""
+    client = anthropic.Anthropic()
+    enriched = []
+
+    for result in confidence_routing["high"]:
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1024,
+            messages=[{
+                "role": "user",
+                "content": f"""Analyze this OCR text from a screenshot. Return JSON only with
+                                these fields:
+                                - screen_type: what kind of screen this is (e.g. email_inbox, search_results, form, document)
+                                - application: which app is shown (e.g. Gmail, Google Search, Google Forms)
+                                - key_content: the main meaningful content, ignoring browser chrome and UI elements
+                                - entities: any notable names, dates, numbers, or organizations found
+
+                                OCR text:
+                                {result['text']}"""
+            }]
+        )
+
+        try:
+            analysis = json.loads(message.content[0].text)
+        except json.JSONDecodeError:
+            analysis = {"raw_response": message.content[0].text}
+
+        enriched.append({
+            "source": result["source"],
+            "confidence": result["confidence"],
+            "analysis": analysis,
+        })
+
+    return enriched
+
+@asset
+def store_enriched_results(llm_enrichment: list[dict]) -> None:
+    """Store enriched OCR results in PostgreSQL."""                                                         
+    conn = psycopg2.connect(
+        host=os.environ["DB_HOST"],                                                                               
+        database=os.environ["DB_NAME"],
+        user=os.environ["DB_USER"],
+        password=os.environ["DB_PASSWORD"],
+    )                                                                                                       
+    cursor = conn.cursor()
+                                                                                                            
+    for item in llm_enrichment:
+        analysis = item["analysis"]
+        cursor.execute(                                                                                     
+            """INSERT INTO enriched_screenshots 
+                (source, confidence, screen_type, application, key_content, entities)                        
+                VALUES (%s, %s, %s, %s, %s, %s)""",
+            (                                                                                               
+                item["source"],
+                item["confidence"],                                                                         
+                analysis.get("screen_type"),
+                analysis.get("application"),
+                analysis.get("key_content"),                                                                
+                analysis.get("entities", []),
+            )                                                                                               
+        )       
+
+    conn.commit()
+    cursor.close()
+    conn.close()
