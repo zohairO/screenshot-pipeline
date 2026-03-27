@@ -1,5 +1,3 @@
-from multiprocessing import context
-
 from dagster import asset, AssetExecutionContext
 import pytesseract
 from PIL import Image
@@ -13,46 +11,61 @@ import psycopg2
 
 load_dotenv()
 
-@asset
-def raw_screenshots() -> list[str]:
-    """Pull screenshots from S3 and download to temp directory."""
+@asset                                                                               
+def raw_screenshots() -> list[dict]:
+    """Pull only unprocessed screenshots from S3."""                                 
     s3 = boto3.client("s3")
-    bucket = os.environ["S3_BUCKET_NAME"]
-
+    bucket = os.environ["S3_BUCKET_NAME"]                                            
+                
+    conn = psycopg2.connect(                                                         
+        host=os.environ["DB_HOST"],
+        database=os.environ["DB_NAME"],                                              
+        user=os.environ["DB_USER"],
+        password=os.environ["DB_PASSWORD"],                                          
+    )           
+    cursor = conn.cursor()
+    cursor.execute("SELECT s3_key FROM processed_screenshots")
+    already_processed = {row[0] for row in cursor.fetchall()}                        
+    cursor.close()                                                                   
+    conn.close()                                                                     
+                                                                                    
     response = s3.list_objects_v2(Bucket=bucket)
 
-    temp_dir = tempfile.mkdtemp()
-    paths = []
-
+    temp_dir = tempfile.mkdtemp()                                                    
+    results = []
+                                                                                    
     for obj in response.get("Contents", []):
         key = obj["Key"]
+        if key in already_processed:
+            continue
         if key.lower().endswith((".png", ".jpg", ".jpeg")):
-            local_path = os.path.join(temp_dir, key.replace("/", "_"))
-            s3.download_file(bucket, key, local_path)
-            paths.append(local_path)
+            local_path = os.path.join(temp_dir, key.replace("/", "_"))               
+            s3.download_file(bucket, key, local_path)                                
+            results.append({"path": local_path, "s3_key": key})                      
+                                                                                    
+    return results
 
-    return paths
 
-
-@asset 
-def ocr_results(raw_screenshots: list[str]) -> list[dict]:
-    """Run OCR on each screenshot and return text with confidence scores."""
-    results = []
-
-    for path in raw_screenshots:
-        image = Image.open(path)
+@asset
+def ocr_results(raw_screenshots: list[dict]) -> list[dict]:
+    """Run OCR on each screenshot and return text with confidence scores."""         
+    results = []                                                                     
+                                                                                    
+    for item in raw_screenshots:                                                     
+        image = Image.open(item["path"])
         text = pytesseract.image_to_string(image)
-        data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
-
-        confidence = [int(c) for c in data["conf"] if int(c) > 0]
-        avg_confidence = sum(confidence) / len(confidence) if confidence else 0
-
+        data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT) 
+                                                                                    
+        confidence = [int(c) for c in data["conf"] if int(c) > 0]                    
+        avg_confidence = sum(confidence) / len(confidence) if confidence else 0      
+                                                                                    
         results.append({
-            "source": path,
+            "source": item["path"],                                                  
+            "s3_key": item["s3_key"],
             "text": text,
-            "confidence": avg_confidence
+            "confidence": avg_confidence                                             
         })
-
+                                                                                    
     return results
 
 @asset
@@ -115,6 +128,7 @@ def llm_enrichment(confidence_routing: dict) -> list[dict]:
 
         enriched.append({
             "source": result["source"],
+            "s3_key": result["s3_key"],
             "confidence": result["confidence"],
             "analysis": analysis,
         })
@@ -153,6 +167,29 @@ def store_enriched_results(context: AssetExecutionContext, llm_enrichment: list[
             context.log.error(f"Insert failed: {e}")
             conn.rollback()    
 
+    # Mark as processed
+    for item in llm_enrichment:                                                      
+        cursor.execute(
+            "INSERT INTO processed_screenshots (s3_key) VALUES (%s) ON CONFLICT DO NOTHING",                                                                            
+            (item["s3_key"],)
+        )
+
     conn.commit()
     cursor.close()
     conn.close()
+
+@asset(deps=[store_enriched_results])                                                
+def run_dbt(context: AssetExecutionContext) -> None:
+    """Run dbt transformations after enriched data is stored."""                     
+    import subprocess                                                                
+    result = subprocess.run(
+        ["dbt", "run"],                                                              
+                                                                                    
+    cwd="/Users/zohairoomatia/Desktop/projects/screenshot-tracker/screenshot_analytics",
+        capture_output=True,                                                         
+        text=True,
+    )                                                                                
+    context.log.info(result.stdout)
+    if result.returncode != 0:                                                       
+        context.log.error(result.stderr)
+        raise Exception("dbt run failed") 
