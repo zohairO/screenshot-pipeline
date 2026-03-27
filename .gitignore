@@ -12,3 +12,9 @@ __pycache__/
 
 # Sample data
 sample_screenshots/
+
+# Terraform                                                          
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars         

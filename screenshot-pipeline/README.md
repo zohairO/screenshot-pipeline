@@ -1,4 +1,4 @@
-# fluency_pipeline
+# screenshot_pipeline
 
 This is a [Dagster](https://dagster.io/) project scaffolded with [`dagster project scaffold`](https://docs.dagster.io/guides/build/projects/creating-a-new-project).
 
@@ -18,7 +18,7 @@ dagster dev
 
 Open http://localhost:3000 with your browser to see the project.
 
-You can start writing assets in `fluency_pipeline/assets.py`. The assets are automatically loaded into the Dagster code location as you define them.
+You can start writing assets in `screenshot_pipeline/assets.py`. The assets are automatically loaded into the Dagster code location as you define them.
 
 ## Development
 
@@ -28,10 +28,10 @@ You can specify new Python dependencies in `setup.py`.
 
 ### Unit testing
 
-Tests are in the `fluency_pipeline_tests` directory and you can run tests using `pytest`:
+Tests are in the `pipeline_tests` directory and you can run tests using `pytest`:
 
 ```bash
-pytest fluency_pipeline_tests
+pytest pipeline_tests
 ```
 
 ### Schedules and sensors
