@@ -21,3 +21,11 @@ sample_screenshots/
 
 # Dagster
 .tmp_dagster_home_*/
+
+# dbt                                                                  
+screenshot_analytics/target/                                           
+screenshot_analytics/dbt_packages/                                     
+screenshot_analytics/logs/  
+
+# logs
+logs/

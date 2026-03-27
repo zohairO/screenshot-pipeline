@@ -16,7 +16,7 @@ for help with the most, so I can focus on improving in those areas.
   5. **Storage** — enriched results are stored in a PostgreSQL database on AWS RDS
                                                                                            
   ## Tech stack   
-                                                                                           
+                                                                  
   - **Dagster** — orchestration                                                            
   - **Tesseract** — OCR
   - **Claude API** — LLM enrichment                                                        
