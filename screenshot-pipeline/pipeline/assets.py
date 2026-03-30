@@ -131,6 +131,7 @@ def llm_enrichment(confidence_routing: dict) -> list[dict]:
             "s3_key": result["s3_key"],
             "confidence": result["confidence"],
             "analysis": analysis,
+            
         })
 
     return enriched
